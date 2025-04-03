@@ -14,7 +14,7 @@ A minimal Python-based Docker image for use in GitLab CI with Ansible, ansible-l
 Use it in your `.gitlab-ci.yml`:
 
 ```yaml
-image: docker.io/xhochn/gitlab-ci-ansible:latest
+image: docker.io/xhochn/xhochn/dpci-ansible-image:latest
 ```
 
 ## License
