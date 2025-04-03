@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    tags:
-      - '*'
   workflow_dispatch:
 
 jobs:
@@ -13,12 +11,36 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: read
+      contents: write
       packages: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Calculate next tag
+        id: tag
+        run: |
+          latest_tag=$(git tag -l 'v0.0.*' | sort -V | tail -n1)
+          echo "Latest tag: $latest_tag"
+
+          if [ -z "$latest_tag" ]; then
+            next_tag="v0.0.1"
+          else
+            patch=$(echo $latest_tag | cut -d. -f3)
+            next_patch=$((patch + 1))
+            next_tag="v0.0.${next_patch}"
+          fi
+
+          echo "Next tag: $next_tag"
+          echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        run: |
+          git tag ${{ steps.tag.outputs.tag }}
+          git push origin ${{ steps.tag.outputs.tag }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -36,4 +58,4 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/dpci-ansible-image:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/dpci-ansible-image:${{ github.ref_name }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/dpci-ansible-image:${{ steps.tag.outputs.tag }}
