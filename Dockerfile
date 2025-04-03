@@ -1,7 +1,8 @@
 FROM python:3.11-slim
 
 ENV PIP_NO_CACHE_DIR=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PATH="/root/.local/bin:$PATH"
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -13,7 +14,7 @@ RUN apt-get update && \
         libffi-dev \
         libssl-dev && \
     pip install --upgrade pip && \
-    pip install pre-commit ansible ansible-lint && \
+    pip install --user pre-commit ansible ansible-lint && \
     apt-get purge -y --auto-remove build-essential gcc && \
     rm -rf /var/lib/apt/lists/*
 
