@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - '*'
   workflow_dispatch:
 
 jobs:
@@ -32,4 +34,6 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/dpci-ansible-image:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/dpci-ansible-image:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/dpci-ansible-image:${{ github.ref_name }}

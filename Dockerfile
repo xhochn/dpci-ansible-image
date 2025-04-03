@@ -1,8 +1,9 @@
-FROM python:3.11-slim
+FROM python:3.12-slim-bookworm
 
 ENV PIP_NO_CACHE_DIR=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/root/.local/bin:$PATH"
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH="/home/ansible/.local/bin:$PATH"
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -14,8 +15,14 @@ RUN apt-get update && \
         libffi-dev \
         libssl-dev && \
     pip install --upgrade pip && \
-    pip install --user pre-commit ansible ansible-lint && \
+    pip install --no-cache-dir \
+        pre-commit \
+        ansible \
+        ansible-lint \
+        yamllint \
+        pytest && \
     apt-get purge -y --auto-remove build-essential gcc && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* ~/.cache/pip
 
-ENTRYPOINT [ "bash" ]
+
+ENTRYPOINT ["bash"]
