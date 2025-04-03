@@ -4,7 +4,7 @@ A minimal Python-based Docker image for use in GitLab CI with Ansible, ansible-l
 
 ## Included
 
-- Python 3.11 (slim)
+- Python 3.13-slim-bookworm
 - Ansible
 - ansible-lint
 - pre-commit
