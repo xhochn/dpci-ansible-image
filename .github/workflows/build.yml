@@ -100,10 +100,12 @@ jobs:
         id: tagcheck
         run: |
           tag=${{ needs.build-and-test.outputs.image-tag }}
+          echo "Checking if tag '$tag' exists on origin..."
           if git ls-remote --tags origin | grep -q "refs/tags/$tag$"; then
             echo "Tag $tag already exists. Skipping release."
             echo "skip_push=true" >> $GITHUB_OUTPUT
           else
+            echo "Tag $tag does not exist. Continuing."
             echo "skip_push=false" >> $GITHUB_OUTPUT
 
       - name: Build & Push Multi-Arch Image
@@ -128,7 +130,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
           tag="${{ needs.build-and-test.outputs.image-tag }}"
           git tag "$tag"
           git push origin "$tag"
