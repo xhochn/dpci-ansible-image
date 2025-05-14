@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: write
-  packages: write
 
 env:
   IMAGE_NAME: dpci-ansible-image
@@ -32,7 +31,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           driver: docker-container
-          buildkitd-flags: --debug
 
       - name: Login to DockerHub
         uses: docker/login-action@v3
@@ -44,7 +42,7 @@ jobs:
         id: generate_tag
         if: github.ref == 'refs/heads/main'
         run: |
-          git fetch --tags
+          git fetch --tags --force
           latest_tag=$(git tag -l 'v0.0.*' | sort -V | tail -n1)
           if [ -z "$latest_tag" ]; then
             next_tag="v0.0.1"
@@ -62,7 +60,7 @@ jobs:
           load: true
           tags: ${{ env.IMAGE_NAME }}:local
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -88,7 +86,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
         with:
           driver: docker-container
-          buildkitd-flags: --debug
 
       - name: Login to DockerHub
         uses: docker/login-action@v3
@@ -100,13 +97,13 @@ jobs:
         id: tagcheck
         run: |
           tag=${{ needs.build-and-test.outputs.image-tag }}
-          echo "Checking if tag '$tag' exists on origin..."
-          if git ls-remote --tags origin | grep -q "refs/tags/$tag$"; then
+          if git ls-remote --tags --exit-code origin "refs/tags/$tag" >/dev/null 2>&1; then
             echo "Tag $tag already exists. Skipping release."
             echo "skip_push=true" >> $GITHUB_OUTPUT
           else
             echo "Tag $tag does not exist. Continuing."
             echo "skip_push=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build & Push Multi-Arch Image
         if: steps.tagcheck.outputs.skip_push == 'false'
@@ -119,7 +116,7 @@ jobs:
             ${{ env.DOCKERHUB_REPO }}:${{ needs.build-and-test.outputs.image-tag }}
             ${{ env.DOCKERHUB_REPO }}:latest
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-to: type=gha,mode=min
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -132,4 +129,4 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           tag="${{ needs.build-and-test.outputs.image-tag }}"
           git tag "$tag"
-          git push origin "$tag"
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} "$tag"
