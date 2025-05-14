@@ -5,7 +5,7 @@ on:
     branches:
       - '**'
   workflow_dispatch:
-  
+
 permissions:
   contents: write
   packages: write
@@ -22,19 +22,11 @@ jobs:
       image-tag: ${{ steps.generate_tag.outputs.tag }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Generate tag (only on main)
-        id: generate_tag
-        if: github.ref == 'refs/heads/main'
-        run: |
-          latest_tag=$(git tag -l 'v0.0.*' | sort -V | tail -n1)
-          if [ -z "$latest_tag" ]; then
-            next_tag="v0.0.1"
-          else
-            patch=$(echo $latest_tag | cut -d. -f3)
-            next_tag="v0.0.$((patch + 1))"
-          fi
-          echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -48,7 +40,21 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build (amd64 only for test)
+      - name: Generate tag (only on main)
+        id: generate_tag
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git fetch --tags
+          latest_tag=$(git tag -l 'v0.0.*' | sort -V | tail -n1)
+          if [ -z "$latest_tag" ]; then
+            next_tag="v0.0.1"
+          else
+            patch=$(echo "$latest_tag" | cut -d. -f3)
+            next_tag="v0.0.$((patch + 1))"
+          fi
+          echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build amd64 image (for test)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -75,6 +81,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -88,7 +96,18 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Check if tag exists on remote
+        id: tagcheck
+        run: |
+          tag=${{ needs.build-and-test.outputs.image-tag }}
+          if git ls-remote --tags origin | grep -q "refs/tags/$tag$"; then
+            echo "Tag $tag already exists. Skipping release."
+            echo "skip_push=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip_push=false" >> $GITHUB_OUTPUT
+
       - name: Build & Push Multi-Arch Image
+        if: steps.tagcheck.outputs.skip_push == 'false'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -105,14 +124,11 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
 
       - name: Create Git Tag
+        if: steps.tagcheck.outputs.skip_push == 'false'
         run: |
-          git config user.name "xhochn"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           tag="${{ needs.build-and-test.outputs.image-tag }}"
-          if git tag | grep -q "^$tag$"; then
-            echo "Tag already exists, skipping."
-            exit 1
-          fi
-
           git tag "$tag"
           git push origin "$tag"
