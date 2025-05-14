@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 env:
   IMAGE_NAME: dpci-ansible-image
@@ -68,7 +69,7 @@ jobs:
 
       - name: Smoke Test
         run: |
-          docker run --rm dpci-ansible-image:local sh -c "echo ✅ Shell OK"
+          docker run --rm dpci-ansible-image:local sh -c "echo Shell OK"
           docker run --rm dpci-ansible-image:local ansible --version
           docker run --rm dpci-ansible-image:local pre-commit --version
 
@@ -96,13 +97,14 @@ jobs:
       - name: Check if tag exists on remote
         id: tagcheck
         run: |
+          git fetch --tags --force
           tag=${{ needs.build-and-test.outputs.image-tag }}
-          if git ls-remote --tags --exit-code origin "refs/tags/$tag" >/dev/null 2>&1; then
-            echo "Tag $tag already exists. Skipping release."
-            echo "skip_push=true" >> $GITHUB_OUTPUT
+          if git rev-parse "$tag" >/dev/null 2>&1 || git ls-remote --tags origin "$tag" | grep -q "$tag"; then
+            echo "Tag '$tag' already exists."
+            echo "skip_push=true" >> "$GITHUB_OUTPUT"
           else
-            echo "Tag $tag does not exist. Continuing."
-            echo "skip_push=false" >> $GITHUB_OUTPUT
+            echo "Tag '$tag' does not exist."
+            echo "skip_push=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Build & Push Multi-Arch Image
