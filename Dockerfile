@@ -23,5 +23,3 @@ RUN apt-get update && \
     apt-get purge -y --auto-remove build-essential gcc && \
     rm -rf /var/lib/apt/lists/* ~/.cache/pip
 
-
-ENTRYPOINT ["bash"]
