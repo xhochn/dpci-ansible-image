@@ -11,16 +11,15 @@ env:
   DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_USERNAME }}/dpci-ansible-image
 
 jobs:
-  build:
-    name: Build (local testable image)
+  build-and-test:
+    name: Build & Smoke-Test
     runs-on: ubuntu-latest
     outputs:
       image-tag: ${{ steps.generate_tag.outputs.tag }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Generate version tag (main only)
+      - name: Generate tag (only on main)
         id: generate_tag
         if: github.ref == 'refs/heads/main'
         run: |
@@ -31,19 +30,17 @@ jobs:
             patch=$(echo $latest_tag | cut -d. -f3)
             next_tag="v0.0.$((patch + 1))"
           fi
-          echo "Generated tag: $next_tag"
           echo "tag=$next_tag" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Login to DockerHub for caching
+      - name: Login to DockerHub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build amd64 image (for smoke test)
+      - name: Build (linux/amd64 only for local test)
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -52,26 +49,24 @@ jobs:
           tags: ${{ env.IMAGE_NAME }}:local
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
 
-  test:
-    name: Smoke Test (local image)
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Run smoke tests
+      - name: Smoke Test
         run: |
           docker run --rm dpci-ansible-image:local sh -c "echo ✅ Shell OK"
           docker run --rm dpci-ansible-image:local ansible --version
           docker run --rm dpci-ansible-image:local pre-commit --version
 
   tag-and-push:
-    name: Tag & Push Multi-Arch Image (main only)
-    needs: [build, test]
+    name: Release Multi-Arch Image
+    needs: build-and-test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Login to DockerHub
         uses: docker/login-action@v3
@@ -79,27 +74,32 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Push multi-arch image to DockerHub
+      - name: Build & Push Multi-Arch Image
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.DOCKERHUB_REPO }}:${{ needs.build.outputs.image-tag }}
+            ${{ env.DOCKERHUB_REPO }}:${{ needs.build-and-test.outputs.image-tag }}
             ${{ env.DOCKERHUB_REPO }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
 
-      - name: Create and push Git tag
+      - name: Create Git Tag
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          if git tag | grep -q "^${{ needs.build.outputs.image-tag }}$"; then
-            echo "Tag already exists. Skipping."
+          tag="${{ needs.build-and-test.outputs.image-tag }}"
+          if git tag | grep -q "^$tag$"; then
+            echo "Tag already exists, skipping."
             exit 1
           fi
 
-          git tag ${{ needs.build.outputs.image-tag }}
-          git push origin ${{ needs.build.outputs.image-tag }}
+          git tag "$tag"
+          git push origin "$tag"
