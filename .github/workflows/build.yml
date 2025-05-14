@@ -25,6 +25,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Check if Dockerfile or build context changed
+        id: check-dockerfile-change
+        run: |
+          git fetch origin ${{ github.event.before }}
+          if git diff --name-only ${{ github.event.before }} ${{ github.sha }} | grep -qE '(^Dockerfile$|^\.dockerignore$|^requirements.*|^.*\.sh$)'; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -39,9 +49,9 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Generate tag (only on main)
+      - name: Generate tag (only on main and Dockerfile change)
         id: generate_tag
-        if: github.ref == 'refs/heads/main'
+        if: github.ref == 'refs/heads/main' && steps.check-dockerfile-change.outputs.changed == 'true'
         run: |
           git fetch --tags --force
           latest_tag=$(git tag -l 'v0.0.*' | sort -V | tail -n1)
@@ -76,7 +86,7 @@ jobs:
   tag-and-push:
     name: Release Multi-Arch Image
     needs: build-and-test
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && needs.build-and-test.outputs.image-tag != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -101,10 +111,10 @@ jobs:
           tag=${{ needs.build-and-test.outputs.image-tag }}
           if git rev-parse "$tag" >/dev/null 2>&1 || git ls-remote --tags origin "$tag" | grep -q "$tag"; then
             echo "Tag '$tag' already exists."
-            echo "skip_push=true" >> "$GITHUB_OUTPUT"
+            echo "skip_push=true" >> $GITHUB_OUTPUT
           else
             echo "Tag '$tag' does not exist."
-            echo "skip_push=false" >> "$GITHUB_OUTPUT"
+            echo "skip_push=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Build & Push Multi-Arch Image
